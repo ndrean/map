@@ -1,15 +1,15 @@
 // import React, { useMemo } from 'react';
-import { proxy } from 'valtio';
+import { proxy, useSnapshot } from 'valtio';
 import { derive } from 'valtio/utils';
 
 const initPos = { lat: 42.2808, lng: -83.743 };
 
-export const gps = proxy({
+const gps = proxy({
   initPos: initPos,
   current: null,
 });
 
-export const getCurr = derive({
+derive({
   derPos: async (get) => {
     if (!navigator.geolocation) return (get(gps).initPos = initPos);
 
@@ -22,3 +22,5 @@ export const getCurr = derive({
     }
   },
 });
+
+export { gps, useSnapshot };
