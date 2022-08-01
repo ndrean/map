@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { useSnapshot, proxy } from 'valtio';
 
 import * as L from 'leaflet';
@@ -14,20 +14,20 @@ const place = proxy({
 });
 
 const apiKey = process.env.REACT_APP_KEY;
-// 'AAPKaeb3b038c0ee4b42944272b6481bb84bQCRgtRYdpCkEkfNQvCJt_G2Ww9JeYZ2yEYcD3U5fvx5nZ0u4aP5E6LG8JbPhsacp';
 
 const Map = ({ initCoord: { lat, lng } }) => {
   const { pcoords } = useSnapshot(place);
 
   const mapElement = useRef(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mapRef = mapElement.current;
     if (!mapRef) {
       return;
     }
 
     const map = L.map(mapRef).setView([lat, lng], 13);
+    const layerGroup = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -35,7 +35,9 @@ const Map = ({ initCoord: { lat, lng } }) => {
     }).addTo(map);
 
     const hereIam = L.latLng(lat, lng);
-    L.marker(hereIam).addTo(map).bindPopup(`<h1>${hereIam.toString()}</h1>`);
+    L.marker(hereIam)
+      .addTo(layerGroup)
+      .bindPopup(`<h1>${hereIam.toString()}</h1>`);
 
     /* search for address */
     map.addControl(searchControl(mapRef));
@@ -55,14 +57,18 @@ const Map = ({ initCoord: { lat, lng } }) => {
         <h3>Lat: ${lat.toFixed(3)}</h3>
         <h3>Lng: ${lng.toFixed(3)}</h3>
         <p>${Match_addr}</p>
-        <button type="button" class="remove">Remove</button>
         `;
       }
     }
 
     function marker(e) {
-      const mark = new L.marker(e.latlng, { draggable: true });
-      mark.addTo(map).bindPopup(html(e.latlng));
+      const location = e.latlng;
+      const mark = new L.marker(location, { draggable: true });
+      mark.addTo(layerGroup).bindPopup(html(e.latlng));
+      const id = mark._leaflet_id;
+      location.id = id;
+      if (place.pcoords.find((c) => c.id === id) === undefined)
+        place.pcoords.push(e.latlng);
 
       mark.on('popupopen', () => openMarker(mark));
       mark.on('dragend', () => draggedMarker(mark));
@@ -70,34 +76,35 @@ const Map = ({ initCoord: { lat, lng } }) => {
 
     function openMarker(mark) {
       const location = mark.getLatLng();
+      const id = mark._leaflet_id;
 
-      console.log(place.pcoords.push(location));
       mark.bindPopup(html(location));
 
       document.querySelector('.remove').addEventListener('click', () => {
-        map.removeLayer(mark);
+        place.pcoords = place.pcoords.filter((c) => c.id !== id) || [];
+        layerGroup.removeLayer(mark);
       });
 
       document.querySelector('.reverse').addEventListener('click', () => {
-        discover(mark);
+        return discover(mark);
       });
     }
 
     function draggedMarker(mark) {
-      console.log('dragged', mark.getLatLng());
+      const id = mark._leaflet_id;
+      const newCoords = mark.getLatLng();
+      const dragged = place.pcoords.find((c) => c.id === id);
+      dragged.lat = newCoords.lat;
+      dragged.lng = newCoords.lng;
+      place.pcoords = place.pcoords.filter((c) => c.id !== id);
+      place.pcoords.push(dragged);
 
       return mark.bindPopup(html(mark.getLatLng()));
     }
 
-    // const layerGroup = L.layerGroup().addTo(map);
-
-    // map.on('click', function (e) {
     function discover(mark) {
       const location = mark.getLatLng();
-      ELG.reverseGeocode({
-        apikey: apiKey,
-      })
-        // .latlng(e.latlng)
+      ELG.reverseGeocode({ apikey: apiKey })
         .latlng(location)
         .run(function (error, result) {
           if (error) {
@@ -111,33 +118,42 @@ const Map = ({ initCoord: { lat, lng } }) => {
           } = result;
 
           mark.bindPopup(html({ lat, lng, Match_addr })).openPopup();
-          /*
-          const lngLatString = `${
-            Math.round(result.latlng.lng * 100000) / 100000
-          }, ${Math.round(result.latlng.lat * 100000) / 100000}`;
-
-          layerGroup.clearLayers();
-          marker = L.marker(result.latlng)
-            .addTo(layerGroup)
-            .bindPopup(
-              `<b>${lngLatString}</b><p>${result.address.Match_addr}</p>`
-            )
-            .openPopup();
-            */
         });
     }
 
-    return () => mapRef.remove();
+    return () => {
+      layerGroup.clearLayers();
+      mapRef.remove();
+    };
   }, [lat, lng]);
 
   return (
     <>
       <div style={{ height: '100%' }} ref={mapElement} />
-      <p>{JSON.stringify(pcoords)}</p>
+      <p>{pcoords && pcoords.map((c) => JSON.stringify(c))}</p>
     </>
   );
 };
 
+/*
+function is_duplicate(coords, coord) {
+  console.log(coords.length);
+  console.log(coord);
+  const res = coords.find((c) => c.lat === coord.lat && c.lng === coord.lng);
+  console.log(res);
+  console.log(res.length);
+  return coords.find((c) => c.lat === coord.lat && c.lng === coord.lng).length >
+    0
+    ? true
+    : false;
+}
+
+function remove(coords, coord) {
+  return (coords = coords.find(
+    (c) => c.lat !== coord.lat && c.lng !== coord.lng
+  ));
+}
+*/
 function searchControl(map) {
   const provider = new EsriProvider();
   return new GeoSearchControl({

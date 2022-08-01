@@ -1,5 +1,5 @@
 import Map from './map';
-import { SearchForm } from './searchForm';
+// import { SearchForm } from './searchForm';
 import './App.css';
 import React from 'react';
 
@@ -13,7 +13,7 @@ function App() {
       <div style={{ height: '400px' }}>
         {current && <Map initCoord={current} />}
       </div>
-      <SearchForm />
+      {/* <SearchForm /> */}
     </React.Suspense>
   );
 }
