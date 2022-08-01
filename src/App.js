@@ -1,24 +1,19 @@
-import logo from './logo.svg';
+import Leaflet from './map';
 import './App.css';
+import React from 'react';
+import { useSnapshot } from 'valtio';
+
+import { gps } from './geolocate';
 
 function App() {
+  const { current } = useSnapshot(gps);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <React.Suspense fallback={<h1>Loading</h1>}>
+      <div style={{ height: '800px' }}>
+        {current && <Leaflet coord={current} />}
+      </div>
+    </React.Suspense>
   );
 }
 
