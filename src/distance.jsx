@@ -1,1 +1,0 @@
-import { place } from './map';

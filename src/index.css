@@ -11,3 +11,17 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+table {
+  border-width: 1px;
+  border-style: solid;
+  border-color: black;
+  width: 100%;
+  border-collapse: collapse;
+}
+td {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(34, 0, 255);
+  width: -2%;
+}

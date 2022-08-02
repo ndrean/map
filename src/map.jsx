@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { useSnapshot, proxy } from 'valtio';
 
 import * as L from 'leaflet';
@@ -10,15 +10,14 @@ import { GeoSearchControl } from 'leaflet-geosearch';
 import { EsriProvider } from 'leaflet-geosearch';
 
 export const place = proxy({
-  pcoords: [],
+  coords: [],
   distance: 0,
 });
 
 const apiKey = process.env.REACT_APP_KEY;
 
 export const Map = ({ initCoord: { lat, lng } }) => {
-  const { pcoords } = useSnapshot(place);
-
+  const { coords } = useSnapshot(place);
   const { distance } = useSnapshot(place);
 
   const mapElement = useRef(null);
@@ -37,13 +36,13 @@ export const Map = ({ initCoord: { lat, lng } }) => {
       attribution: '© OpenStreetMap',
     }).addTo(map);
 
+    /*
     const hereIam = L.latLng(lat, lng);
     L.marker(hereIam)
       .addTo(layerGroup)
-      .bindPopup(`<h1>${hereIam.toString()}</h1>`)
-      .openPopup();
+      .bindPopup(`<h1>${hereIam.toString()}</h1>`);
+    */
 
-    /* search for address */
     map.addControl(searchControl(mapRef));
 
     map.on('click', marker);
@@ -64,25 +63,30 @@ export const Map = ({ initCoord: { lat, lng } }) => {
         `;
       }
     }
+    const lineLayer = L.geoJSON();
 
-    async function marker(e) {
+    function marker(e) {
       const location = e.latlng;
       const mark = new L.marker(location, { draggable: true });
       mark.addTo(layerGroup).bindPopup(html(e.latlng));
       const id = mark._leaflet_id;
       location.id = id;
 
-      if (place.pcoords.find((c) => c.id === id) === undefined)
-        place.pcoords.push(location);
+      if (place.coords.find(c => c.id === id) === undefined)
+        place.coords.push(location);
 
-      mark.on('popupopen', () => openMarker(mark));
-      mark.on('dragend', () => draggedMarker(mark));
+      mark.on('popupopen', () => openMarker(mark, id));
+      mark.on('dragend', () => draggedMarker(mark, id, lineLayer));
 
-      const [start, end, ...rest] = place.pcoords;
+      drawLine(lineLayer);
+    }
+
+    function drawLine(lineLayer) {
+      const [start, end, ...rest] = place.coords;
       if (start && end) {
         const p1 = L.latLng([start.lat, start.lng]);
         const p2 = L.latLng([end.lat, end.lng]);
-        const lineLayer = L.geoJSON().addTo(map);
+
         lineLayer
           .addData({
             type: 'LineString',
@@ -92,46 +96,65 @@ export const Map = ({ initCoord: { lat, lng } }) => {
             ],
           })
           .addTo(map);
+
         place.distance = (p1.distanceTo(p2) / 1000).toFixed(2);
       }
     }
 
-    function openMarker(mark) {
-      const id = mark._leaflet_id;
-      const getLocation = place.pcoords.find((c) => c.id === id);
+    function openMarker(mark, id) {
+      const getLocation = place.coords.find(c => c.id === id);
       mark.bindPopup(html(getLocation));
 
       document.querySelector('.remove').addEventListener('click', () => {
-        place.pcoords = place.pcoords.filter((c) => c.id !== id) || [];
+        place.coords = place.coords.filter(c => c.id !== id) || [];
         place.distance = 0;
         layerGroup.removeLayer(mark);
-        document.querySelector('.leaflet-interactive').remove();
+        const line = document.querySelector('.leaflet-interactive');
+        if (line) line.remove();
       });
 
       document.querySelector('.reverse').addEventListener('click', () => {
-        return discover(mark, id);
+        return reverse(mark, id);
       });
     }
 
-    function draggedMarker(mark) {
-      const id = mark._leaflet_id;
-      const newCoords = mark.getLatLng();
-      const dragged = place.pcoords.find((c) => c.id === id);
-      dragged.lat = newCoords.lat;
-      dragged.lng = newCoords.lng;
-      place.pcoords = place.pcoords.filter((c) => c.id !== id);
-      place.pcoords.push(dragged);
-
-      return mark.bindPopup(html(mark.getLatLng()));
+    function draggedMarker(mark, id, lineLayer) {
+      document.querySelector('.leaflet-interactive').remove();
+      const currentCoords = mark.getLatLng();
+      const dragged = place.coords.find(c => c.id === id);
+      dragged.lat = currentCoords.lat;
+      dragged.lng = currentCoords.lng;
+      // place.coords = place.coords.filter(c => c.id !== id);
+      // place.coords.push(dragged);
+      mark.bindPopup(html(currentCoords));
+      drawLine(lineLayer);
+      follow(currentCoords, id);
     }
 
-    async function discover(mark, id) {
+    function follow(location, id) {
+      return new Promise((resolve, reject) => {
+        resolve(
+          ELG.reverseGeocode({ apikey: apiKey })
+            .latlng(location)
+            .run(function (error, result) {
+              if (error) {
+                return;
+              }
+              const newCoord = place.coords.find(c => c.id === id);
+              newCoord.addr = result.address.Match_addr;
+              // place.coords = place.coords.filter(c => c.id !== id);
+              // place.coords.push(newCoord);
+            })
+        );
+      });
+    }
+
+    function reverse(mark, id) {
       const location = mark.getLatLng();
       ELG.reverseGeocode({ apikey: apiKey })
         .latlng(location)
         .run(function (error, result) {
           if (error) {
-            console.log(error);
             return;
           }
 
@@ -140,10 +163,10 @@ export const Map = ({ initCoord: { lat, lng } }) => {
             latlng: { lat, lng },
           } = result;
           mark.bindPopup(html({ lat, lng, Match_addr })).openPopup();
-          const discovered = place.pcoords.find((c) => c.id === id);
+          const discovered = place.coords.find(c => c.id === id);
           discovered.addr = Match_addr;
-          place.pcoords = place.pcoords.filter((c) => c.id !== id);
-          place.pcoords.push(discovered);
+          // place.coords = place.coords.filter(c => c.id !== id);
+          // place.coords.push(discovered);
         });
     }
 
@@ -153,12 +176,34 @@ export const Map = ({ initCoord: { lat, lng } }) => {
     };
   }, [lat, lng]);
 
-  console.log(pcoords);
+  console.log('render');
   return (
     <>
-      <div style={{ height: '100%' }} ref={mapElement} />
-      <p>{pcoords && pcoords.map((c) => JSON.stringify(c))}</p>
-      <p>{distance}</p>
+      <div style={{ height: '50%' }} ref={mapElement} />
+      <div>
+        <table>
+          <thead>
+            <tr>
+              <th>Lat</th>
+              <th>Long</th>
+              <th>ID</th>
+              <th>Found address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {coords &&
+              coords.map(c => (
+                <tr key={c.id}>
+                  <td>{c.lat.toFixed(2)}</td>
+                  <td>{c.lng.toFixed(2)}</td>
+                  <td>{c.id}</td>
+                  <td>{c.addr}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+      <p>distance: {distance}</p>
     </>
   );
 };
@@ -171,5 +216,3 @@ function searchControl(map) {
     notFoundMessage: 'Sorry, that address could not be found.',
   });
 }
-
-export const Distance = () => {};
