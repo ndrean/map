@@ -179,27 +179,18 @@ export const Map = ({ initCoord: { lat, lng } }) => {
   console.log('render');
   return (
     <>
-      <div style={{ height: '50%' }} ref={mapElement} />
+      <div style={{ height: '100%' }} ref={mapElement} />
       <div>
         <table>
           <thead>
             <tr>
               <th>Lat</th>
               <th>Long</th>
-              <th>ID</th>
               <th>Found address</th>
             </tr>
           </thead>
           <tbody>
-            {coords &&
-              coords.map(c => (
-                <tr key={c.id}>
-                  <td>{c.lat.toFixed(2)}</td>
-                  <td>{c.lng.toFixed(2)}</td>
-                  <td>{c.id}</td>
-                  <td>{c.addr}</td>
-                </tr>
-              ))}
+            {coords && coords.map(c => <Row coord={c} key={c.id} />)}
           </tbody>
         </table>
       </div>
@@ -207,6 +198,16 @@ export const Map = ({ initCoord: { lat, lng } }) => {
     </>
   );
 };
+
+function Row({ coord }) {
+  return (
+    <tr key={coord.id}>
+      <td>{coord.lat.toFixed(2)}</td>
+      <td>{coord.lng.toFixed(2)}</td>
+      <td>{coord.addr}</td>
+    </tr>
+  );
+}
 
 function searchControl(map) {
   const provider = new EsriProvider();
