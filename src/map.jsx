@@ -9,18 +9,21 @@ import 'leaflet-geosearch/dist/geosearch.css';
 import { GeoSearchControl } from 'leaflet-geosearch';
 import { EsriProvider } from 'leaflet-geosearch';
 
-const place = proxy({
+export const place = proxy({
   pcoords: [],
+  distance: 0,
 });
 
 const apiKey = process.env.REACT_APP_KEY;
 
-const Map = ({ initCoord: { lat, lng } }) => {
+export const Map = ({ initCoord: { lat, lng } }) => {
   const { pcoords } = useSnapshot(place);
+
+  const { distance } = useSnapshot(place);
 
   const mapElement = useRef(null);
 
-  useLayoutEffect(() => {
+  React.useEffect(() => {
     const mapRef = mapElement.current;
     if (!mapRef) {
       return;
@@ -37,7 +40,8 @@ const Map = ({ initCoord: { lat, lng } }) => {
     const hereIam = L.latLng(lat, lng);
     L.marker(hereIam)
       .addTo(layerGroup)
-      .bindPopup(`<h1>${hereIam.toString()}</h1>`);
+      .bindPopup(`<h1>${hereIam.toString()}</h1>`)
+      .openPopup();
 
     /* search for address */
     map.addControl(searchControl(mapRef));
@@ -61,32 +65,51 @@ const Map = ({ initCoord: { lat, lng } }) => {
       }
     }
 
-    function marker(e) {
+    async function marker(e) {
       const location = e.latlng;
       const mark = new L.marker(location, { draggable: true });
       mark.addTo(layerGroup).bindPopup(html(e.latlng));
       const id = mark._leaflet_id;
       location.id = id;
+
       if (place.pcoords.find((c) => c.id === id) === undefined)
-        place.pcoords.push(e.latlng);
+        place.pcoords.push(location);
 
       mark.on('popupopen', () => openMarker(mark));
       mark.on('dragend', () => draggedMarker(mark));
+
+      const [start, end, ...rest] = place.pcoords;
+      if (start && end) {
+        const p1 = L.latLng([start.lat, start.lng]);
+        const p2 = L.latLng([end.lat, end.lng]);
+        const lineLayer = L.geoJSON().addTo(map);
+        lineLayer
+          .addData({
+            type: 'LineString',
+            coordinates: [
+              [start.lng, start.lat],
+              [end.lng, end.lat],
+            ],
+          })
+          .addTo(map);
+        place.distance = (p1.distanceTo(p2) / 1000).toFixed(2);
+      }
     }
 
     function openMarker(mark) {
-      const location = mark.getLatLng();
       const id = mark._leaflet_id;
-
-      mark.bindPopup(html(location));
+      const getLocation = place.pcoords.find((c) => c.id === id);
+      mark.bindPopup(html(getLocation));
 
       document.querySelector('.remove').addEventListener('click', () => {
         place.pcoords = place.pcoords.filter((c) => c.id !== id) || [];
+        place.distance = 0;
         layerGroup.removeLayer(mark);
+        document.querySelector('.leaflet-interactive').remove();
       });
 
       document.querySelector('.reverse').addEventListener('click', () => {
-        return discover(mark);
+        return discover(mark, id);
       });
     }
 
@@ -102,7 +125,7 @@ const Map = ({ initCoord: { lat, lng } }) => {
       return mark.bindPopup(html(mark.getLatLng()));
     }
 
-    function discover(mark) {
+    async function discover(mark, id) {
       const location = mark.getLatLng();
       ELG.reverseGeocode({ apikey: apiKey })
         .latlng(location)
@@ -116,8 +139,11 @@ const Map = ({ initCoord: { lat, lng } }) => {
             address: { Match_addr },
             latlng: { lat, lng },
           } = result;
-
           mark.bindPopup(html({ lat, lng, Match_addr })).openPopup();
+          const discovered = place.pcoords.find((c) => c.id === id);
+          discovered.addr = Match_addr;
+          place.pcoords = place.pcoords.filter((c) => c.id !== id);
+          place.pcoords.push(discovered);
         });
     }
 
@@ -127,33 +153,16 @@ const Map = ({ initCoord: { lat, lng } }) => {
     };
   }, [lat, lng]);
 
+  console.log(pcoords);
   return (
     <>
       <div style={{ height: '100%' }} ref={mapElement} />
       <p>{pcoords && pcoords.map((c) => JSON.stringify(c))}</p>
+      <p>{distance}</p>
     </>
   );
 };
 
-/*
-function is_duplicate(coords, coord) {
-  console.log(coords.length);
-  console.log(coord);
-  const res = coords.find((c) => c.lat === coord.lat && c.lng === coord.lng);
-  console.log(res);
-  console.log(res.length);
-  return coords.find((c) => c.lat === coord.lat && c.lng === coord.lng).length >
-    0
-    ? true
-    : false;
-}
-
-function remove(coords, coord) {
-  return (coords = coords.find(
-    (c) => c.lat !== coord.lat && c.lng !== coord.lng
-  ));
-}
-*/
 function searchControl(map) {
   const provider = new EsriProvider();
   return new GeoSearchControl({
@@ -162,4 +171,5 @@ function searchControl(map) {
     notFoundMessage: 'Sorry, that address could not be found.',
   });
 }
-export default Map;
+
+export const Distance = () => {};
